@@ -121,7 +121,7 @@ def send_command(module):
     ## run() will send the commands to the device.
     n.run()
     data = n.results[d]
-    module.exit_json(changed=True,changes=data)
+    module.exit_json(changed=False,results=data)
 
 def main():
     argument_spec = dict(
