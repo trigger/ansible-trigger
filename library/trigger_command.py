@@ -37,8 +37,11 @@ short_description: Sends arbitrary commands to devices via the Trigger framework
 description:
   - The trigger_command module provides a module for sending arbitray
     commands to a network node and returns the ouput. 
-version_added: 0.0.0
-category: System
+  - Trigger is a toolkit used to connect to network devices. While Trigger can utilize a device's API, its main use with Ansible would be to interface with devices for which the only connection methods are telnet or ssh.
+  - You can install trigger through pip or follow on github (http://github.com/trigger).
+  - Read the docs: http://triggerproject.org/en/latest/
+version_added: "1.9"
+category: network
 author: Mike Biancaniello (@chepazzo)
 requirements:
   - trigger>=1.5.2
@@ -48,8 +51,7 @@ notes:
 options:
   command:
     description:
-      - Specifies the command to send to the node and execute
-        in the configured mode.
+      - Specifies the command to execute on the node.
     required: true
   device:
     description:
@@ -75,7 +77,7 @@ EXAMPLES = """
       command="show version"
       username="bob"
       password="ih8p@sswds"
-    register: trigger
+    register: trigger_show_version
 
 """
 
@@ -85,16 +87,32 @@ try:
 except ImportError:
     TRIGGER_AVAILABLE = False
 
-PROD_ONLY = False
 TIMEOUT = 30
 VERBOSE = True
 DEBUG = True
+## Whether or not to restrict devices to production.
+## See Trigger documentation for netdevices.
+PROD_ONLY = False
 
 class Do(Commando):
-    def __init__(self, commands=[], debug=False, timeout=TIMEOUT, **args):
-        '''
-        adding files,debug to allowed arguments
-        '''
+    '''
+    A Commando subclass to instantiate the command(s) to be run.
+
+    Args:
+      commands (list): A list of commands (str) to be run on specified devices.
+      devices (list): A list of devices on which to run specified commands.
+      creds (Optional(tuple)): A tuple containing (username,password) for authenticating
+        on the devices.
+        | If omitted, Trigger will try to figure it out
+        | See Trigger documentation for netdevices.
+        | Default is None.
+      timeout (Optional[int]): Timeout (in sec) to wait for a response from the device.
+        | Default is 30.
+
+    '''
+    def __init__(self, commands=None, debug=False, timeout=TIMEOUT, **args):
+        if commands is None:
+            commands = []
         #print "\n\nDEBUG: "+str(debug)
         self.commands = commands
         self.data = {}
@@ -105,7 +123,34 @@ class Do(Commando):
             args = dict(timeout=timeout)
         Commando.__init__(self, **args)
 
-def send_command(module):
+def send_command(d,c,creds):
+    '''
+    Sends a command to a device.
+
+    Args:
+      d (str): Name of device on which to run specified command.
+      c (str): Command to run on specified device.
+      creds (tuple): A tuple containing (username,password) for authenticating
+        on the devices.
+
+    Returns:
+        str: Text output from device.
+    '''
+    try:
+        n = Do(devices=[d], commands=[c], creds=creds, verbose=VERBOSE, debug=DEBUG, timeout=TIMEOUT, production_only=PROD_ONLY)
+    except Exception:
+        return None
+    ## run() will send the commands to the device.
+    n.run()
+    data = n.results[d]
+    return data
+
+def module_main(module):
+    '''
+    Main Ansible module function.
+    This just does Ansible stuff like collect/format args and set 
+    value of changed attribute.
+    '''
     d = module.params['device']
     c = module.params['command']
     creds = None
@@ -113,27 +158,29 @@ def send_command(module):
         u = module.params['username']
         p = module.params['password']
         creds = (u,p)
-    try:
-        n = Do(devices=[d], commands=[c], creds=creds, verbose=VERBOSE, debug=DEBUG, timeout=TIMEOUT, production_only=PROD_ONLY)
-    except Exception:
-        module.fail_json(msg=str(e))
+    data = send_command(d,c,creds)
+    if data is None:
+        module.fail_json(msg='Command failed.')
         return False
-    ## run() will send the commands to the device.
-    n.run()
-    data = n.results[d]
-    module.exit_json(changed=False,results=data)
+    module.exit_json(results=data)
 
 def main():
+    '''
+    Main function for python module.
+    '''
     argument_spec = dict(
         device=dict(required=True),
         command=dict(required=True),
         username=dict(required=False, default=None),
         password=dict(required=False, default=None)
     )
-    module = AnsibleModule(argument_spec=argument_spec)
+    module = AnsibleModule(
+        argument_spec=argument_spec,
+        supports_check_mode=False
+    )
     if not TRIGGER_AVAILABLE:
         module.fail_json(msg='trigger is required for this module. Install from pip: pip install trigger.')
-    send_command(module)
+    module_main(module)
 
 from ansible.module_utils.basic import *
 if __name__ == '__main__':
