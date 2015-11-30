@@ -93,6 +93,9 @@ DEBUG = True
 ## Whether or not to restrict devices to production.
 ## See Trigger documentation for netdevices.
 PROD_ONLY = False
+## Whether or not to force using the cli for Juniper devices.
+## If False, then you have to write a handler to parse the xml output.
+FORCE_CLI = True
 
 class Do(Commando):
     '''
@@ -137,7 +140,7 @@ def send_command(d,c,creds):
         str: Text output from device.
     '''
     try:
-        n = Do(devices=[d], commands=[c], creds=creds, verbose=VERBOSE, debug=DEBUG, timeout=TIMEOUT, production_only=PROD_ONLY)
+        n = Do(devices=[d], commands=[c], creds=creds, verbose=VERBOSE, debug=DEBUG, timeout=TIMEOUT, production_only=PROD_ONLY,force_cli=FORCE_CLI)
     except Exception:
         return None
     ## run() will send the commands to the device.
